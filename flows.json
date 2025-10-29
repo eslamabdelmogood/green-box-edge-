@@ -1,0 +1,162 @@
+[
+    {
+        "id": "f34e887dc511f844",
+        "type": "subflow",
+        "name": "Subflow 2",
+        "info": "",
+        "in": [
+            {
+                "x": 60,
+                "y": 120,
+                "wires": [
+                    {
+                        "id": "5b37056877826937"
+                    }
+                ]
+            }
+        ],
+        "out": [
+            {
+                "x": 780,
+                "y": 160,
+                "wires": [
+                    {
+                        "id": "eabddc5654df42f8",
+                        "port": 0
+                    }
+                ]
+            },
+            {
+                "x": 780,
+                "y": 160,
+                "wires": [
+                    {
+                        "id": "eabddc5654df42f8",
+                        "port": 1
+                    }
+                ]
+            },
+            {
+                "x": 780,
+                "y": 160,
+                "wires": [
+                    {
+                        "id": "eabddc5654df42f8",
+                        "port": 2
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "5b37056877826937",
+        "type": "join",
+        "z": "f34e887dc511f844",
+        "name": "",
+        "mode": "custom",
+        "build": "object",
+        "property": "payload",
+        "propertyType": "msg",
+        "key": "topic",
+        "joiner": "\\n",
+        "joinerType": "str",
+        "useparts": false,
+        "accumulate": true,
+        "timeout": "",
+        "count": "3",
+        "reduceRight": false,
+        "reduceExp": "",
+        "reduceInit": "",
+        "reduceInitType": "",
+        "reduceFixup": "",
+        "x": 190,
+        "y": 120,
+        "wires": [
+            [
+                "8e6faa17d575beba"
+            ]
+        ]
+    },
+    {
+        "id": "b358834d126e07bb",
+        "type": "function",
+        "z": "f34e887dc511f844",
+        "name": "oneM2M_Formatter",
+        "func": "const decision_data = msg.payload.decision_output;\n\n// فحص أمان أساسي للتأكد من وجود البيانات\nif (!decision_data || !decision_data.status) {\n    // إذا كانت البيانات مفقودة، نرسل الرسالة الأصلية إلى المخرج الثاني ونحذر\n    node.warn(\"Decision data is missing. Skipping oneM2M formatting.\");\n    return [null, msg];\n}\n\n// استخلاص حالة القرار\n// نستخدم String() لضمان أن القيمة نصية قبل استخدام .trim()\nconst decision_status = String(decision_data.status).trim();\n\n// 2. التحقق من حالة الفشل الحرج (CRITICAL)\nif (decision_status === \"CRITICAL FAILURE IMMINENT\") {\n\n    // صياغة رسالة oneM2M: استخلاص البيانات الضرورية\n    const component_code = decision_data.component;\n    const arrival_port = \"DXB\";\n\n    // نستخدم كائن رسالة جديد لتجنب إتلاف الرسالة الأصلية\n    let oneM2M_msg = {\n        payload: {\n            \"oneM2M_Operation\": \"CREATE\",\n            \"Resource_ID\": \"AE-GreenBox-FLT747_3\",\n            \"Target_Logistics_HUB\": \"CSE-Logistics-HUB-DMM\",\n            \"Delivery_Payload\": {\n                \"Part_Code\": component_code,\n                \"Status\": \"Critical_Fail_48H\",\n                \"ETA_Port\": arrival_port\n            }\n        },\n        topic: \"logistics_critical\" // إضافة موضوع للمساعدة في التوجيه\n    };\n\n    // إرسال رسالة oneM2M المصاغة إلى المخرج الأول (مسار اللوجستيات)\n    return [oneM2M_msg, null];\n}\n\n// 3. أي حالة أخرى (WARNING أو OK) تذهب إلى المخرج الثاني\nelse {\n    // إرسال الرسالة الأصلية (التي تحتوي على status: \"WARNING...\" أو \"OK\") إلى المخرج الثاني للمراقبة\n    return [null, msg];\n}",
+        "outputs": 2,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 630,
+        "y": 80,
+        "wires": [
+            [],
+            []
+        ]
+    },
+    {
+        "id": "eabddc5654df42f8",
+        "type": "function",
+        "z": "f34e887dc511f844",
+        "name": "Split Readings",
+        "func": "// استخراج القراءات التي نريد عرضها\nvar readings = msg.payload.readings;\n\n// 2. فحص الأمان\nif (!readings) {\n    return [null, null, null]; // إيقاف المخارج إذا لم توجد قراءات\n}\n\n// 3. إعداد المخارج الثلاثة\nvar temp_out = { payload: readings.temp };\nvar vib_out = { payload: readings.vib };\nvar press_out = { payload: readings.pressure };\n\n// 4. الإرجاع لتغذية الـ Gauges\nreturn [temp_out, vib_out, press_out]",
+        "outputs": 3,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 620,
+        "y": 160,
+        "wires": [
+            [],
+            [],
+            []
+        ]
+    },
+    {
+        "id": "8e6faa17d575beba",
+        "type": "function",
+        "z": "f34e887dc511f844",
+        "name": "MEC_AI_Analysis",
+        "func": "let temp = msg.payload.temp ;\nlet vib = msg.payload.vib ;\nlet pressure = msg.payload.pressure ;\n\nlet decision = {};\n\n// 2. **منطق القرار (Green Box Logic):**\n// هذا الجزء يبقى كما هو (وهو صحيح منطقياً)\n\n// المستوى الأول: الفشل الحرج\nif (temp > 70 && vib > 10) {\n    decision = {\n        status: \"CRITICAL FAILURE IMMINENT\",\n        component: \"Hydraulic_Pump_A402\",\n        priority: \"URGENT_REPLACEMENT\"\n    };\n\n    // المستوى الثاني: التحذير\n} else if (temp > 50 || vib > 7 || pressure < 600) {\n\n    let warning_list = [];\n\n    if (temp > 50) { warning_list.push(\"ارتفاع الحرارة\"); }\n    if (vib > 7) { warning_list.push(\"ارتفاع الاهتزاز\"); }\n    if (pressure < 600) { warning_list.push(\"انخفاض الضغط\"); }\n\n    let status_message = \"WARNING - \" + warning_list.join(\" و \");\n\n    decision = {\n        status: status_message,\n        component: \"N/A\",\n        priority: \"ENGINEER_ALERT\"\n    };\n\n    // المستوى الثالث: الحالة العادية\n} else {\n    decision = {\n        status: \"OK\",\n        priority: \"NORMAL_MONITORING\"\n    };\n}\n\n// 3. **دمج الرسالة النهائية (مخرج واحد):**\nmsg.payload = {\n    readings: {\n        temp: temp,\n        vib: vib,\n        pressure: pressure\n    },\n    decision_output: decision\n};\n\n// **إرجاع الرسالة الموحدة**\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 370,
+        "y": 120,
+        "wires": [
+            [
+                "b358834d126e07bb",
+                "eabddc5654df42f8"
+            ]
+        ]
+    },
+    {
+        "id": "c21e489db6efb466",
+        "type": "subflow:f34e887dc511f844",
+        "z": "d085c1b15a7aae16",
+        "name": "Green box",
+        "x": 610,
+        "y": 180,
+        "wires": [
+            [
+                "ee4d4c43213335b5",
+                "61d9ddb48f157a4a"
+            ],
+            [
+                "a4834bf3671e7a21",
+                "b10848d777c2c439"
+            ],
+            [
+                "3ee9766fad54c335",
+                "2d6e0f7376212485"
+            ]
+        ]
+    }
+]
